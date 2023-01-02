@@ -64,3 +64,82 @@ b *$stvec
 	4.  由于P2在进入RUNABLE状态前也必定调用了swtch函数，所以之前的swtch函数会被恢复，并返回到进程P2所在的系统调用或者中断处理程序中（注：因为P2进程之前调用swtch函数必然在系统调用或者中断处理程序中）
 	5. 当内核线程执行完成以后，trapframe中的用户寄存器会被恢复，返回到用户态执行用户进程P2.
 （注：每个CPU都有一个完全不同的调度器线程，调度器线程也是一种内核线程，它也有自己的context对象。任何运行在CPU1上的进程，当其决定让出CPU都会切换到C PU1对应的调度器线程，并由调度器线程切换到下一个进程）
+
+### networking
+[E1000网卡手册]([8254x Family of Gigabit Ethernet Controllers Software Developer’s Manual (mit.edu)](https://pdos.csail.mit.edu/6.828/2022/readings/8254x_GBe_SDM.pdf))，接收描述符和发送描述符的细节都在第三章。
+- **接收描述符**：
+实验中模拟的网卡是E1000，`e1000_init()`函数可以配置E1000使其可以从内存中直接读取数据包，也可以直接将数据包写入到RAM中，而不用经过CPU处理，触发中断等操作，即DMA技术。由于E1000处理数据包的速度跟不上收发网络包的速度，于是在`e1000_init()`中提供了多个buffer来供E1000写数据包。这些存放在RAM中的buffer数组被称为`descriptors`，每一个`descriptor`都包含着一个可供E1000写网络包的内存地址，结构体`rx_desc`中定义了`descriptor`的格式。`descriptors`组成的数组一般被称为接收环(receive ring)或接收队列。
+```c
+struct rx_desc
+{
+  uint64 addr;       /*  descriptor的地址 */
+  uint16 length;     /* 写入addr的数据包长度 */
+  uint16 csum;       /* Packet checksum */
+  uint8 status;      /* Descriptor status */
+  uint8 errors;      /* Descriptor Errors */
+  uint16 special;
+};
+```
+描述符格式：
+![[networking描述符.png]]
+
+- **环形队列**：
+如果网卡收到了新的数据，会往环形队列 `head` 位置描述符的缓冲区写入数据，下图展示了接收描述符环形队列的结构：
+![[networking环形队列.png]]
+初始化时，`head` 为 0，`tail` 为队列缓冲区减一。
+其中，`head` 到 `tail` 的这段浅色的区域是空闲的（图有点问题，其实 `tail` 指向的位置也时空闲的）。也就是说，这个区域内的数据包都已经被软件处理好了，那么如果有新的数据包到达，网卡会把数据写入这个区域的开始，也就是 `head`，把老的数据覆盖掉。网卡把老的数据覆盖掉后会把 `head` 的值加一。
+而软件会按照顺序处理深色的区域。读取环形队列时，读取的是 `tail + 1` 位置描述符缓冲区的数据（这个位置是所有未处理数据中等待时间最长的），处理完这个缓冲区后会把 `tail` 增加一。
+
+- **发送描述符**：
+结构体定义：
+```c
+struct tx_desc
+{
+  uint64 addr;
+  uint16 length;
+  uint8 cso;       // checksum offset
+  uint8 cmd;       // command field
+  uint8 status;    // 
+  uint8 css;       // checksum start field
+  uint16 special;  // 
+};
+```
+其中 `addr` 和 `length` 的作用和接收描述符的作用相同。除了这两个，主要还需要用到 `cmd` 和 `status` 这两个属性。和接收标志位一样，在 `status` 中需要用到 DD 标志位，表示当前标志位指向的数据是否发送完成。而 `cmd` 描述了传输这个数据包时的一些设置，或者说对于网卡的命令。详情见手册。
+
+- **mbuf**：
+为了方便网络数据的处理，xv6 还定义了一个结构体，即 `struct mbuf`，在 `e1000_transmit()` 函数中，我们就需要接收一个 `mbuf` 类型的网络数据，然后写入 DMA 对应的内存地址，进而让网卡发送这个数据。`e1000_init()`使用`mbufalloc()`函数将E1000的mbuf数据包缓冲区分配给DMA。
+```c
+struct mbuf {
+  struct mbuf  *next; // the next mbuf in the chain
+  char         *head; // the current start position of the buffer
+  unsigned int len;   // the length of the buffer
+  char         buf[MBUF_SIZE]; // the backing store
+};
+```
+- 在 `struct mbuf` 结构体中，`len` 表示正文的长度，`head` 表示 headroom 的结束位置。
+- 当`net.c`中的网络栈需要发送一个数据包的时候，其会调用`e1000_transmit()`函数，其中的mbuf缓冲区包含了需要被发送的数据包。
+- 在 `net.c` 中有很多和 `mbuf` 相关的函数，最主要的就是 `mbufalloc()` 和 `mbuffree()` 分别对应着 `mbuf` 的分配和释放。
+
+对`mbuf`对操作如下：
+```c
+// The above functions manipulate the size and position of the buffer:
+// <- push <- trim
+// -> pull -> put
+// [-headroom-][------buffer------][-tailroom-]
+// |----------------MBUF_SIZE-----------------|
+//
+// These marcos automatically typecast and determine the size of header structs.
+// In most situations you should use these instead of the raw ops above.
+#define mbufpullhdr(mbuf, hdr) (typeof(hdr)*)mbufpull(mbuf, sizeof(hdr))
+#define mbufpushhdr(mbuf, hdr) (typeof(hdr)*)mbufpush(mbuf, sizeof(hdr))
+#define mbufputhdr(mbuf, hdr) (typeof(hdr)*)mbufput(mbuf, sizeof(hdr))
+#define mbuftrimhdr(mbuf, hdr) (typeof(hdr)*)mbuftrim(mbuf, sizeof(hdr))
+```
+其中：
+- `mbufpullhdr`用于从缓冲区的起始位置剥离数据（即去除头部数据包）并返回其位置。
+- `mbufpushhdr`用于为数据包加上头数据（如ip协议头，udp协议头，eth协议头）。
+- `mbufputhdr`用于将数据追加到缓冲区的末尾，并返回指向它的指针。
+- `mbuftrimhdr`用于从缓冲区末尾剥离数据并返回指向它的指针。
+
+- **寄存器**：
+除了读取和写入RAM中的描述符环外，驱动程序还需要通过E1000的内存映射控制寄存器与E1000交互，以检测接收到的数据包何时可用，并通知E1000驱动程序已在某些发送描述符中填充了要发送的数据包。全局变量regs保存指向E1000的第一个控制寄存器的指针；驱动程序可以通过将regs索引为数组来获取其他寄存器。我们可以通过特定的内存映射访问到 E1000 的控制寄存器。具体来说，是通过 `e1000.c` 中的 `regs` 全局变量加上一些偏移量。在 `e1000_dev.h` 中定义了额这些偏移量。
