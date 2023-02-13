@@ -21,6 +21,6 @@ RUN useradd --create-home --no-log-init --shell /bin/bash ${user} \
     && echo "${user}:zqz" | chpasswd \
     && usermod -a -G sudo ${user}
 WORKDIR /home/${user}
-RUN echo 'export ALL_PROXY=socks5://127.0.0.1:1080' >> /home/${user}/.bashrc
+RUN echo 'export ALL_PROXY=socks5://127.0.0.1:1080' >> /home/${user}/.bashrc && git config --global url."https://".insteadOf git://
 USER ${user}
 
