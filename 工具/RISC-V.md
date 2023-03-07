@@ -208,23 +208,23 @@ else
 ```bash
 保存fp --> 将fp移动至callee frame开头的位置 --> 使用fp来获取stack --> 恢复fp
 # sp0表示caller frame的sp，sp指向新的callee frame的第一个空内存地址
-		 address         Stack
+	 address         Stack
                      +-----------+
        0x4000 0FF8   |           |
 fp-->  0x4000 0FF4   |           | <---+
-	   0x4000 0FF0   |           |     |---caller frame
+       0x4000 0FF0   |           |     |---caller frame
 sp0->  0x4000 0FEC   |           |     |
-	                 +-----------+ <---+
+	             +-----------+ <---+
 sp-->  0x4000 0FF8   |0x4000 0FF4|(store fp address first for recover)
 (fp1)	             +-----------+ <---+
        0x4000 0FE4   |           |     |
-	   0x4000 0FE0   |           |     |---callee frame
+       0x4000 0FE0   |           |     |---callee frame
 sp1->  0x4000 0FDC   |           |     |
-					 +-----------+ <---+
-	   0x4000 0FD8   |           |
-	   0x4000 0FD4   |           |
-	   0x4000 0FD0   |           |
-				     +-----------+
+	             +-----------+ <---+
+       0x4000 0FD8   |           |
+       0x4000 0FD4   |           |
+       0x4000 0FD0   |           |
+		     +-----------+
 ```
 - 无嵌套调用：
 ```c
