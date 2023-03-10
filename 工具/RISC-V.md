@@ -1,4 +1,6 @@
 ### RISC-V 基础整数指令集
+#### RV32I Base Instruction Set
+![riscv32I基本指令](https://github.com/baibaidashixiong/obsidian/tree/main/%E5%B7%A5%E5%85%B7/image/RV32I Base Instruction Set.png)
 #### RV32I 指令格式
 - RISC-V有六种基本指令格式：
 	1. R-Type：用于寄存器-寄存器操作的 R 类型指令。Register/register
