@@ -177,6 +177,35 @@ float average( int n_values, ... ){
 ```
 
 - **ADT和黑盒**：C可以用于设计和实现**抽象数据类型(ADT, abstract data type)**，也称黑盒。因为其可以限制函数和数据定义的作用域。限制对模块的访问是通过static关键字的合理使用实现的，它可以限制对并非接口的函数和数据的访问。例如维护一个地址/电话号码列表的模块，模块必须提供函数，根据一个指定的名字查找地址和电话号码。但是列表存储的方式是依赖于具体实现的，可以加上static关键字来将其私有，使得外部用户无法直接访问和模块实现有关的数据。
+- **回调函数(callback function)**：当程序跑起来时，一般情况下，应用程序（application program）会时常通过API调用库里所预先备好的函数。但是有些库函数（library function）却要求应用先传给它一个函数，好在合适的时候调用，以完成目标任务。这个被传入的、后又被调用的函数就称为回调函数（callback function）。回调函数的最大优势在于解耦，可以在主体不变的情况下对不同的需求传递不同的行为。
+```c
+#include <stdio.h>
+
+void callback1(int num) {
+    printf("Callback called with argument %d\n", num);
+}
+
+void callback2(int num) {
+    printf("It is %d clock in the morning\n", num);
+}
+
+void register_callback(void (*cb)(int)) {
+    // Call the callback function with argument 10
+    cb(10);
+}
+
+int main() {
+    // Register the callback function
+    register_callback(callback1);
+    register_callback(callback2);
+
+    return 0;
+}
+>>> output
+Callback called with argument 10
+It is 10 clock in the morning
+```
+
 
 ### 数组
 #### 一维数组
